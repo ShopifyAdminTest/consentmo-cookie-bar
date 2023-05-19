@@ -10,8 +10,8 @@ import {
   useMatches,
   useRouteError,
 } from '@remix-run/react';
-import {ShopifySalesChannel, Seo} from '@shopify/hydrogen';
 import {Layout} from '~/components';
+import CookieBar from '~/components/CookieBar';
 import {GenericError} from './components/GenericError';
 import {NotFound} from './components/NotFound';
 import styles from './styles/app.css';
@@ -19,7 +19,17 @@ import favicon from '../public/favicon.svg';
 import {seoPayload} from '~/lib/seo.server';
 import {DEFAULT_LOCALE, parseMenu, getCartId} from './lib/utils';
 import invariant from 'tiny-invariant';
-import {useAnalytics} from './hooks/useAnalytics';
+import {useLocation} from '@remix-run/react';
+import { useState, useEffect } from 'react';
+import {useAnalyticsFromLoaders} from './utils';
+import {
+  AnalyticsEventName,
+  getClientBrowserParameters,
+  sendShopifyAnalytics,
+  ShopifySalesChannel,
+  useShopifyCookies,
+  Seo
+} from '@shopify/hydrogen';
 
 export const links = () => {
   return [
@@ -42,12 +52,21 @@ export async function loader({request, context}) {
     context.session.get('customerAccessToken'),
     getLayoutData(context),
   ]);
+  
+  const customerId = Boolean(customerAccessToken) ? 
+    await getCustomer(context, context.session.get('customerAccessToken')) : 
+    false;
+  
 
   const seo = seoPayload.root({shop: layout.shop, url: request.url});
 
   return defer({
     isLoggedIn: Boolean(customerAccessToken),
     layout,
+    customerId: 
+      Boolean(customerAccessToken) ? 
+        parseInt(customerId.id.replace('gid://shopify/Customer/', '')) : 
+        0,
     selectedLocale: context.storefront.i18n,
     cart: cartId ? getCart(context, cartId) : undefined,
     analytics: {
@@ -61,9 +80,26 @@ export async function loader({request, context}) {
 export default function App() {
   const data = useLoaderData();
   const locale = data.selectedLocale ?? DEFAULT_LOCALE;
-  const hasUserConsent = true;
+  const [hasUserConsent, setHasUserConsent] = useState(true);
 
-  useAnalytics(hasUserConsent, locale);
+  useShopifyCookies({hasUserConsent});
+  const location = useLocation();
+  const pageAnalytics = useAnalyticsFromLoaders();
+
+  useEffect(() => {
+    const payload = {
+      ...getClientBrowserParameters(),
+      ...pageAnalytics,
+      hasUserConsent,
+      shopifySalesChannel: ShopifySalesChannel.hydrogen,
+    };
+
+    sendShopifyAnalytics({
+      eventName: AnalyticsEventName.PAGE_VIEW,
+      payload,
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location]);
 
   return (
     <html lang={locale.language}>
@@ -73,6 +109,11 @@ export default function App() {
         <Seo />
         <Meta />
         <Links />
+        <CookieBar
+          store={data.seo.title + '.myshopify.com'}
+          customer_id={data.customerId}
+          trackingConsent={(consent) => {setHasUserConsent(consent)}}
+        />
       </head>
       <body>
         <Layout
@@ -183,6 +224,18 @@ const LAYOUT_QUERY = `#graphql
     title
     type
     url
+  }
+`;
+
+const CUSTOMER_QUERY = `#graphql
+  query CustomerDetails(
+    $customerAccessToken: String!
+    $country: CountryCode
+    $language: LanguageCode
+  ) @inContext(country: $country, language: $language) {
+    customer(customerAccessToken: $customerAccessToken) {
+      id
+    }
   }
 `;
 
@@ -348,4 +401,25 @@ export async function getCart({storefront}, cartId) {
   });
 
   return cart;
+}
+
+export async function getCustomer(context, customerAccessToken) {
+  const {storefront} = context;
+
+  const data = await storefront.query(CUSTOMER_QUERY, {
+    variables: {
+      customerAccessToken,
+      country: context.storefront.i18n.country,
+      language: context.storefront.i18n.language,
+    },
+  });
+
+  /**
+   * If the customer failed to load, we assume their access token is invalid.
+   */
+  if (!data || !data.customer) {
+    throw await doLogout(context);
+  }
+
+  return data.customer;
 }
