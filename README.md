@@ -1,0 +1,1 @@
+# consentmo-cookie-bar
