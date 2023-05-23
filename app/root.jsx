@@ -82,24 +82,10 @@ export default function App() {
   const locale = data.selectedLocale ?? DEFAULT_LOCALE;
   const [hasUserConsent, setHasUserConsent] = useState(true);
 
-  useShopifyCookies({hasUserConsent});
-  const location = useLocation();
-  const pageAnalytics = useAnalyticsFromLoaders();
-
   useEffect(() => {
-    const payload = {
-      ...getClientBrowserParameters(),
-      ...pageAnalytics,
-      hasUserConsent,
-      shopifySalesChannel: ShopifySalesChannel.hydrogen,
-    };
-
-    sendShopifyAnalytics({
-      eventName: AnalyticsEventName.PAGE_VIEW,
-      payload,
-    });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [location]);
+    useAnalytics(hasUserConsent, locale);
+    useShopifyCookies({hasUserConsent});
+  }, [hasUserConsent]);
 
   return (
     <html lang={locale.language}>
