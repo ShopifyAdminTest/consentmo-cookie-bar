@@ -10,6 +10,7 @@ import {
   useMatches,
   useRouteError,
 } from '@remix-run/react';
+import {ShopifySalesChannel, Seo} from '@shopify/hydrogen';
 import {Layout} from '~/components';
 import CookieBar from '~/components/CookieBar';
 import {GenericError} from './components/GenericError';
@@ -19,17 +20,7 @@ import favicon from '../public/favicon.svg';
 import {seoPayload} from '~/lib/seo.server';
 import {DEFAULT_LOCALE, parseMenu, getCartId} from './lib/utils';
 import invariant from 'tiny-invariant';
-import {useLocation} from '@remix-run/react';
 import { useState, useEffect } from 'react';
-import {useAnalyticsFromLoaders} from './utils';
-import {
-  AnalyticsEventName,
-  getClientBrowserParameters,
-  sendShopifyAnalytics,
-  ShopifySalesChannel,
-  useShopifyCookies,
-  Seo
-} from '@shopify/hydrogen';
 
 export const links = () => {
   return [
